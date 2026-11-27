@@ -7,7 +7,7 @@ import type { Platform } from "./platform";
 
 export interface Mistake {
   at: number;
-  kind: "correction" | "review-miss";
+  kind: "correction" | "review-miss" | "drill-miss";
   said?: string;
   better?: string;
   why?: string;
@@ -94,6 +94,7 @@ export interface Log {
   mistakes: Mistake[];
   sessions: Session[];
   reviews: number;
+  drill: Record<string, { right: number; wrong: number }>;
 }
 
 export interface AppState {
@@ -115,7 +116,7 @@ export const emptyProfile = (): Profile => ({
   autoDream: false,
 });
 
-export const emptyLog = (): Log => ({ mistakes: [], sessions: [], reviews: 0 });
+export const emptyLog = (): Log => ({ mistakes: [], sessions: [], reviews: 0, drill: {} });
 
 type DocName = "deck" | "profile" | "log";
 
@@ -217,5 +218,6 @@ export function trimLog(log: Log): Log {
     mistakes: log.mistakes.slice(-300),
     sessions: log.sessions.slice(-30).map((x) => ({ ...x, turns: x.turns.slice(-40) })),
     reviews: log.reviews,
+    drill: log.drill,
   };
 }

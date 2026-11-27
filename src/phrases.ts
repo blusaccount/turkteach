@@ -15,7 +15,15 @@ export type Topic =
   | "Family"
   | "Small talk"
   | "Visits & holidays"
-  | "Feelings & reactions";
+  | "Feelings & reactions"
+  | "Food & drink"
+  | "Home"
+  | "People"
+  | "Time"
+  | "Numbers"
+  | "Verbs"
+  | "Describing"
+  | "Question words";
 
 export const TOPICS: Topic[] = [
   "Greetings & politeness",
@@ -24,6 +32,14 @@ export const TOPICS: Topic[] = [
   "Small talk",
   "Visits & holidays",
   "Feelings & reactions",
+  "Food & drink",
+  "Home",
+  "People",
+  "Time",
+  "Numbers",
+  "Verbs",
+  "Describing",
+  "Question words",
 ];
 
 const raw: Array<[string, string, Topic, string?]> = [
@@ -121,6 +137,158 @@ const raw: Array<[string, string, Topic, string?]> = [
   ["Olsun.", "Never mind. / That's okay.", "Feelings & reactions"],
   ["Gerçekten mi?", "Really?", "Feelings & reactions"],
   ["Sağlık olsun.", "Never mind, as long as everyone's healthy.", "Feelings & reactions", "Said when something breaks or goes wrong."],
+  // ---------- Vocabulary ----------
+  // Food & drink
+  ["ekmek", "bread", "Food & drink"],
+  ["su", "water", "Food & drink"],
+  ["çay", "tea", "Food & drink"],
+  ["kahve", "coffee", "Food & drink", "Türk kahvesi is served after meals with a glass of water."],
+  ["süt", "milk", "Food & drink"],
+  ["peynir", "cheese", "Food & drink"],
+  ["zeytin", "olive", "Food & drink"],
+  ["yumurta", "egg", "Food & drink"],
+  ["domates", "tomato", "Food & drink"],
+  ["salatalık", "cucumber", "Food & drink"],
+  ["et", "meat", "Food & drink"],
+  ["tavuk", "chicken", "Food & drink"],
+  ["balık", "fish", "Food & drink"],
+  ["pilav", "rice (cooked)", "Food & drink"],
+  ["çorba", "soup", "Food & drink", "Mercimek çorbası (lentil soup) is a staple."],
+  ["salata", "salad", "Food & drink"],
+  ["meyve", "fruit", "Food & drink"],
+  ["sebze", "vegetable", "Food & drink"],
+  ["şeker", "sugar / candy", "Food & drink"],
+  ["tuz", "salt", "Food & drink"],
+  ["kahvaltı", "breakfast", "Food & drink", "Weekend kahvaltı is a big family event."],
+  ["öğle yemeği", "lunch", "Food & drink"],
+  ["akşam yemeği", "dinner", "Food & drink"],
+  ["tabak", "plate", "Food & drink"],
+  ["bardak", "glass (cup)", "Food & drink"],
+  ["çatal / bıçak / kaşık", "fork / knife / spoon", "Food & drink"],
+  ["lezzetli", "delicious", "Food & drink"],
+  ["acıktım", "I'm hungry (I got hungry)", "Food & drink"],
+  ["susadım", "I'm thirsty", "Food & drink"],
+
+  // Home
+  ["ev", "house / home", "Home"],
+  ["oda", "room", "Home"],
+  ["mutfak", "kitchen", "Home"],
+  ["banyo", "bathroom", "Home"],
+  ["salon", "living room", "Home"],
+  ["balkon", "balcony", "Home"],
+  ["bahçe", "garden", "Home"],
+  ["kapı", "door", "Home"],
+  ["pencere", "window", "Home"],
+  ["masa", "table", "Home"],
+  ["sandalye", "chair", "Home"],
+  ["koltuk", "armchair / sofa", "Home"],
+  ["yatak", "bed", "Home"],
+  ["terlik", "slippers", "Home", "Guests are usually handed slippers at the door."],
+  ["anahtar", "key", "Home"],
+
+  // People
+  ["aile", "family", "People"],
+  ["anne", "mother", "People"],
+  ["baba", "father", "People"],
+  ["kız kardeş", "sister", "People"],
+  ["erkek kardeş", "brother", "People"],
+  ["kuzen", "cousin", "People"],
+  ["yeğen", "niece / nephew", "People"],
+  ["eş", "spouse", "People"],
+  ["nişanlı", "fiancé(e)", "People"],
+  ["kayınvalide", "mother-in-law", "People"],
+  ["kayınpeder", "father-in-law", "People"],
+  ["çocuk", "child", "People"],
+  ["bebek", "baby", "People"],
+  ["arkadaş", "friend", "People"],
+  ["komşu", "neighbour", "People"],
+  ["misafir", "guest", "People", "Hospitality to a misafir is a point of pride."],
+  ["kadın / erkek", "woman / man", "People"],
+
+  // Time
+  ["bugün", "today", "Time"],
+  ["yarın", "tomorrow", "Time"],
+  ["dün", "yesterday", "Time"],
+  ["şimdi", "now", "Time"],
+  ["sonra", "later / after", "Time"],
+  ["önce", "before / first", "Time"],
+  ["sabah", "morning", "Time"],
+  ["öğleden sonra", "afternoon", "Time"],
+  ["akşam", "evening", "Time"],
+  ["gece", "night", "Time"],
+  ["hafta", "week", "Time"],
+  ["hafta sonu", "weekend", "Time"],
+  ["ay", "month (also: moon)", "Time"],
+  ["yıl", "year", "Time"],
+  ["her zaman", "always", "Time"],
+  ["bazen", "sometimes", "Time"],
+  ["hiç", "never / not at all", "Time"],
+  ["Saat kaç?", "What time is it?", "Time"],
+
+  // Numbers
+  ["bir, iki, üç", "one, two, three", "Numbers"],
+  ["dört, beş, altı", "four, five, six", "Numbers"],
+  ["yedi, sekiz, dokuz, on", "seven, eight, nine, ten", "Numbers"],
+  ["yirmi", "twenty", "Numbers"],
+  ["otuz", "thirty", "Numbers"],
+  ["kırk", "forty", "Numbers"],
+  ["elli", "fifty", "Numbers"],
+  ["yüz", "hundred", "Numbers"],
+  ["bin", "thousand", "Numbers"],
+  ["Kaç yaşındasınız?", "How old are you? (formal)", "Numbers"],
+  ["Otuz yaşındayım.", "I'm thirty years old.", "Numbers"],
+
+  // Verbs
+  ["gelmek", "to come", "Verbs"],
+  ["gitmek", "to go", "Verbs"],
+  ["yemek", "to eat (also: food)", "Verbs"],
+  ["içmek", "to drink", "Verbs"],
+  ["yapmak", "to do / to make", "Verbs"],
+  ["etmek", "to do (in compounds: yardım etmek)", "Verbs"],
+  ["konuşmak", "to speak", "Verbs"],
+  ["anlamak", "to understand", "Verbs"],
+  ["bilmek", "to know", "Verbs"],
+  ["sevmek", "to love / to like", "Verbs"],
+  ["istemek", "to want", "Verbs"],
+  ["görmek", "to see", "Verbs"],
+  ["almak", "to take / to buy", "Verbs"],
+  ["vermek", "to give", "Verbs"],
+  ["oturmak", "to sit / to live (somewhere)", "Verbs"],
+  ["çalışmak", "to work / to study", "Verbs"],
+  ["öğrenmek", "to learn", "Verbs"],
+  ["beklemek", "to wait", "Verbs"],
+  ["uyumak", "to sleep", "Verbs"],
+  ["pişirmek", "to cook", "Verbs"],
+  ["tanışmak", "to meet (get to know)", "Verbs"],
+  ["düşünmek", "to think", "Verbs"],
+
+  // Describing
+  ["güzel", "beautiful / nice", "Describing"],
+  ["iyi / kötü", "good / bad", "Describing"],
+  ["büyük / küçük", "big / small", "Describing"],
+  ["sıcak / soğuk", "hot / cold", "Describing"],
+  ["yeni / eski", "new / old (things)", "Describing"],
+  ["genç / yaşlı", "young / old (people)", "Describing"],
+  ["kolay / zor", "easy / difficult", "Describing"],
+  ["çok", "very / a lot", "Describing"],
+  ["biraz", "a little", "Describing"],
+  ["mutlu", "happy", "Describing"],
+  ["yorgun", "tired", "Describing"],
+  ["tatlı", "sweet / cute", "Describing", "Also said about people: 'Çok tatlısın!' = You're so sweet!"],
+  ["hazır", "ready", "Describing"],
+  ["meşgul", "busy", "Describing"],
+
+  // Question words
+  ["ne?", "what?", "Question words"],
+  ["kim?", "who?", "Question words"],
+  ["nerede?", "where?", "Question words"],
+  ["nereye?", "where to?", "Question words"],
+  ["ne zaman?", "when?", "Question words"],
+  ["neden? / niye?", "why?", "Question words"],
+  ["nasıl?", "how?", "Question words"],
+  ["kaç?", "how many?", "Question words"],
+  ["hangi?", "which?", "Question words"],
+  ["ne kadar?", "how much?", "Question words"],
 ];
 
 function slug(s: string): string {

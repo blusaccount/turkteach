@@ -8,19 +8,21 @@ It runs as a **claude.ai artifact**, so the Claude features use your normal Clau
 
 ## What's in it
 
+Everything is written practice: you type the Turkish.
+
 | Tab | What it does |
 | --- | --- |
-| **Today** | Your review count, progress, and the dreaming panel. |
-| **Review** | Spaced-repetition flashcards (SM-2 style). Turkish → English or the reverse, with audio. Keys: Space to reveal, 1–4 to grade. |
-| **Talk** | Role-play with Claude as a member of her family (first dinner, tea with her dad, Bayram at grandma's, …). Gentle corrections under your lines, an idea for what to say next, one tap to add phrases to your deck, and Turkish dictation where available. |
-| **Phrases** | ~80 starter phrases with cultural notes (Eline sağlık, Kolay gelsin, Hoş bulduk…), plus anything you or Claude add. |
-| **Suffixes** | A vowel-harmony helper: type a noun and see plural, in/at, from, to, the, of, my, with and the question particle, each with the rule that produced it. |
+| **Home** | Review count, progress ring, and shortcuts to Drill, Chat and Dream. |
+| **Review** | Spaced-repetition flashcards (SM-2 style). You see the English and type the Turkish. Missing Turkish letters count as "almost"; a row of ç ğ ı İ ö ş ü buttons helps without a Turkish keyboard. Flip-card mode is one tap away. |
+| **Drill** | Grammar drills, typed: noun cases (plural, in/at, from, to, the, of, my, with) on everyday nouns, and verb tenses (present -iyor, negative, past -di, future -ecek) for all six persons. Rounds of 10; forms you get wrong come up more often. The suffix explorer shows every form of a noun and the rule behind it. |
+| **Chat** | Written role-play with Claude as a member of her family (first dinner, tea with her dad, Bayram at grandma's, …). Gentle corrections under your lines, an idea for what to write next, one tap to save phrases. |
+| **Words** | About 220 cards: family phrases with cultural notes, plus vocabulary for food, home, people, time, numbers, verbs, adjectives and question words. Add your own. |
 
 ## Dreaming
 
 Based on Lamis Mukta's talk *Learning while you sleep: beyond memory to dreaming* (AI Native DevCon, June 2026), adapted from agents to a learner:
 
-- **In-session notes stay small.** While you practise, the app only records what happened: corrections from role-plays, flashcards you missed, and conversation transcripts.
+- **In-session notes stay small.** While you practise, the app only records what happened: corrections from chats, flashcards you missed, grammar drill misses and accuracy, and chat transcripts.
 - **Dreaming is a separate pass.** On demand, or once a day by itself if you turn that on, Claude reads across recent conversations, corrections and your weakest cards together with its current memory of you. It looks for things no single session shows: recurring mistakes, new strengths, entries that contradict each other, and weak spots that have stopped showing up.
 - **It proposes and you decide.** A dream proposes memory changes (new, update, forget), each with the reason, how often it saw the pattern and quoted evidence, plus new flashcards and new role-play scenes aimed at your weak spots. Nothing changes until you apply it, and you can untick any item.
 - **Memory is versioned.** Every applied dream saves the previous memory, and you can restore any earlier version.
@@ -35,17 +37,19 @@ In claude.ai, everything is stored in the artifact's private per-person store (`
 ```sh
 npm install
 npm run dev      # local preview (Claude features off outside claude.ai)
-npm test         # suffix rules, scheduler, dream memory changes
+npm test         # suffix and verb rules, answer checking, scheduler, dream memory changes
 npm run build    # writes dist/artifact.html, the single page that gets published
 ```
 
-To publish a new version, build and publish `dist/artifact.html` as an artifact with these capabilities: `sample` (asks Claude on your plan), `db` and `user` (your saved progress), `tts` and `dictation` (listening and speaking). In Claude Code you can just ask Claude to "publish dist/artifact.html to the Öğretmen artifact".
+To publish a new version, build and publish `dist/artifact.html` as an artifact with these capabilities: `sample` (asks Claude on your plan), and `db` and `user` (your saved progress). In Claude Code you can just ask Claude to "publish dist/artifact.html to the Öğretmen artifact".
 
 ## Code map
 
 - `src/phrases.ts` starter deck
 - `src/srs.ts` spaced-repetition scheduler
-- `src/suffix.ts` vowel harmony and suffix rules
+- `src/suffix.ts` vowel harmony and noun suffix rules
+- `src/verbs.ts` verb tenses
+- `src/drill.ts` typed-answer checking and drill generation
 - `src/ai.ts` role-play and dreaming prompts, and applying accepted memory changes
 - `src/store.ts` persistence (artifact store or localStorage)
 - `src/main.ts` the UI

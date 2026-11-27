@@ -2,6 +2,7 @@ import "./style.css";
 import { PHRASES, TOPICS } from "./phrases";
 import { cardId, newCard, queue, schedule, type Card, type Grade } from "./srs";
 import { inflectAll } from "./suffix";
+import { check, nextExercise, type DrillKind, type Exercise, type Verdict } from "./drill";
 import { STARTER_SCENARIOS } from "./scenarios";
 import { applyChanges, dream, dreamMaterial, roleplayTurn, type RoleplayReply, type Turn } from "./ai";
 import { icon } from "./icons";
@@ -41,7 +42,7 @@ function h<K extends keyof HTMLElementTagNameMap>(
 let P: Platform;
 let store: Store;
 let S: AppState;
-type Tab = "home" | "review" | "talk" | "phrases" | "suffix" | "dream" | "me";
+type Tab = "home" | "review" | "drill" | "talk" | "phrases" | "suffix" | "dream" | "me";
 let tab: Tab = "home";
 const root = document.getElementById("app")!;
 let view: HTMLElement;
@@ -74,42 +75,22 @@ function addCard(tr: string, en: string, source: Card["source"], topic = "From c
   return true;
 }
 
-// ---------- speech ----------
-function speak(text: string) {
-  if (P.tts) {
-    P.tts.speak(text, { language: "tr" }).catch(() => browserSpeak(text));
-  } else browserSpeak(text);
-}
-function browserSpeak(text: string) {
-  try {
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = "tr-TR";
-    u.rate = 0.9;
-    speechSynthesis.cancel();
-    speechSynthesis.speak(u);
-  } catch {
-    /* no speech available */
-  }
-}
-const canSpeak = () => !!P.tts || "speechSynthesis" in window;
 const iconBtn = (name: string, label: string, onclick: (e: Event) => void, cls = "") =>
   h("button", { class: `icon-btn ${cls}`, title: label, "aria-label": label, onclick }, icon(name, 18));
-const speakBtn = (text: string) =>
-  canSpeak() ? iconBtn("speaker", "Listen", (e) => { e.stopPropagation(); speak(text); }) : null;
-
 // ---------- shell ----------
 const TABS: [Tab, string, string][] = [
   ["home", "Home", "home"],
   ["review", "Review", "cards"],
-  ["talk", "Talk", "chat"],
+  ["drill", "Drill", "harmony"],
+  ["talk", "Chat", "chat"],
   ["phrases", "Words", "book"],
-  ["suffix", "Grammar", "harmony"],
 ];
+const PARENT: Partial<Record<Tab, Tab>> = { dream: "home", me: "home", suffix: "drill" };
 
 function shell() {
   const nav = h("nav", { class: "tabbar", role: "tablist" });
   for (const [id, label, ic] of TABS) {
-    const active = tab === id || (tab === "dream" && id === "home") || (tab === "me" && id === "home");
+    const active = tab === id || PARENT[tab] === id;
     nav.append(h("button", { role: "tab", "aria-selected": String(active), onclick: () => go(id) }, icon(ic, 22), h("span", {}, label)));
   }
   view = h("main", { class: "stack view" });
@@ -127,7 +108,7 @@ function go(t: Tab) {
 
 function render() {
   view.replaceChildren();
-  ({ home: renderHome, review: renderReview, talk: renderTalk, phrases: renderPhrases, suffix: renderSuffix, dream: renderDream, me: renderMe })[tab]();
+  ({ home: renderHome, review: renderReview, drill: renderDrill, talk: renderTalk, phrases: renderPhrases, suffix: renderSuffix, dream: renderDream, me: renderMe })[tab]();
 }
 
 function topBar(title: string, ...right: Child[]) {
@@ -162,11 +143,12 @@ function renderHome() {
       ),
     ),
     h("div", { class: "tiles" },
-      h("button", { class: "tile-btn talk", onclick: () => go("talk") }, icon("chat", 28), h("b", {}, "Talk"), h("span", {}, "Role-play")),
-      h("button", { class: "tile-btn dream", onclick: () => go("dream") },
+      h("button", { class: "tile-btn drill", onclick: () => go("drill") }, icon("harmony", 28), h("b", {}, "Drill"), h("span", {}, "Cases & tenses")),
+      h("button", { class: "tile-btn talk", onclick: () => go("talk") }, icon("chat", 28), h("b", {}, "Chat"), h("span", {}, "Write with the family")),
+      h("button", { class: "tile-btn dream wide", onclick: () => go("dream") },
         icon("moon", 28),
         h("b", {}, dreaming ? "Dreaming…" : "Dream"),
-        h("span", {}, pending ? "Ready to review" : S.profile.memories.length ? `${S.profile.memories.length} memories` : "Learns from you"),
+        h("span", {}, pending ? "Ready to review" : S.profile.memories.length ? `${S.profile.memories.length} memories` : "Learns from your mistakes"),
         pending ? h("i", { class: "dot", "aria-label": "New" }) : null,
       ),
     ),
@@ -371,9 +353,37 @@ function ago(t: number): string {
   return `${Math.round(hr / 24)} days ago`;
 }
 
+// ---------- Turkish letters ----------
+/** A row of the letters a non-Turkish keyboard lacks; inserts into the given field. */
+function trKeys(input: HTMLInputElement | HTMLTextAreaElement): HTMLElement {
+  const row = h("div", { class: "trkeys" });
+  for (const ch of ["ç", "ğ", "ı", "İ", "ö", "ş", "ü"]) {
+    const b = h("button", { type: "button", tabindex: -1 }, ch);
+    b.addEventListener("mousedown", (e) => e.preventDefault());
+    b.addEventListener("click", () => {
+      const st = input.selectionStart ?? input.value.length;
+      const en = input.selectionEnd ?? st;
+      input.value = input.value.slice(0, st) + ch + input.value.slice(en);
+      input.setSelectionRange(st + 1, st + 1);
+      input.focus();
+      input.dispatchEvent(new Event("input"));
+    });
+    row.append(b);
+  }
+  return row;
+}
+
+const VERDICT: Record<Verdict, { label: string; cls: string; icon: string }> = {
+  right: { label: "Doğru!", cls: "right", icon: "check" },
+  almost: { label: "Almost", cls: "almost", icon: "check" },
+  wrong: { label: "Not quite", cls: "wrong", icon: "close" },
+};
+
 // ---------- Review ----------
 let revealed = false;
-let reverse = false;
+let typed = true; // type the Turkish (default) or flip cards
+let answer: { given: string; verdict: Verdict } | null = null;
+let draftAnswer = "";
 const session = { done: 0 };
 
 function renderReview() {
@@ -381,35 +391,77 @@ function renderReview() {
   view.append(
     topBar("Review",
       h("span", { class: "count" }, String(q.length)),
-      iconBtn("swap", reverse ? "Showing English first" : "Showing Turkish first", () => { reverse = !reverse; revealed = false; render(); }, reverse ? "on" : ""),
+      iconBtn(typed ? "cards" : "pen", typed ? "Switch to flip cards" : "Switch to typing", () => { typed = !typed; revealed = false; answer = null; render(); }),
     ),
   );
   const total = q.length + session.done;
   view.append(h("div", { class: "bar" }, h("i", { style: `width:${total ? (session.done / total) * 100 : 100}%` })));
 
   if (!q.length) {
-    view.append(h("section", { class: "flash" }, icon("check", 44), h("p", { class: "prompt" }, "Aferin!"), h("button", { class: "btn primary big", onclick: () => go("talk") }, "Talk")));
+    view.append(h("section", { class: "flash" }, icon("check", 44), h("p", { class: "prompt" }, "Aferin!"), h("button", { class: "btn primary big", onclick: () => go("drill") }, "Drill grammar")));
     return;
   }
   const card = q[0];
-  const front = reverse ? card.en : card.tr;
-  const back = reverse ? card.tr : card.en;
+  const badge = card.source === "dream" ? h("span", { class: "badge" }, icon("moon", 14), "Dream") : card.due === 0 ? h("span", { class: "badge" }, "New") : null;
+  const noteBtn = (flash: HTMLElement) => {
+    if (!card.note) return;
+    const note = h("p", { class: "muted small", hidden: true }, card.note);
+    flash.append(note);
+    flash.prepend(h("span", { class: "corner" }, iconBtn("info", "Note", (e) => { e.stopPropagation(); note.hidden = !note.hidden; }, "small")));
+  };
+
+  if (typed) {
+    const paren = card.en.match(/\(([^)]*)\)/);
+    const main = card.en.replace(/\s*\([^)]*\)/g, "").trim() || card.en;
+    const flash = h("section", { class: "flash typed" }, badge, h("p", { class: "prompt" }, main), paren ? h("p", { class: "cue" }, paren[1]) : null);
+    if (answer) {
+      const v = VERDICT[answer.verdict];
+      flash.append(
+        h("div", { class: `verdict ${v.cls}` }, icon(v.icon, 18), v.label),
+        h("p", { class: "answer tr" }, card.tr),
+        answer.verdict !== "right" && answer.given ? h("p", { class: "given" }, answer.given) : "",
+      );
+      noteBtn(flash);
+      view.append(flash);
+      const next = (g: Grade) => () => { answer = null; draftAnswer = ""; grade_(card, g); };
+      const btns = h("div", { class: "row" });
+      if (answer.verdict === "wrong") btns.append(h("button", { class: "btn big grow", onclick: next(2) }, "I was right"), h("button", { class: "btn primary big grow", onclick: next(0) }, "Next"));
+      else if (answer.verdict === "almost") btns.append(h("button", { class: "btn primary big grow", onclick: next(1) }, "Next"));
+      else btns.append(h("button", { class: "btn big grow", onclick: next(3) }, "Too easy"), h("button", { class: "btn primary big grow", onclick: next(2) }, "Next"));
+      view.append(btns);
+      setTimeout(() => (btns.lastElementChild as HTMLElement)?.focus(), 0);
+      return;
+    }
+    view.append(flash);
+    const input = h("input", { type: "text", id: "review-answer", class: "big-input", placeholder: "Türkçe…", autocomplete: "off", autocapitalize: "off", spellcheck: false }) as HTMLInputElement;
+    input.value = draftAnswer;
+    input.addEventListener("input", () => (draftAnswer = input.value));
+    const submit = () => {
+      answer = { given: input.value.trim(), verdict: check(input.value, card.tr) };
+      render();
+    };
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
+    view.append(
+      input,
+      trKeys(input),
+      h("div", { class: "row" },
+        h("button", { class: "btn big grow", onclick: () => { answer = { given: "", verdict: "wrong" }; render(); } }, "Show"),
+        h("button", { class: "btn primary big grow", onclick: submit }, "Check"),
+      ),
+    );
+    setTimeout(() => input.focus({ preventScroll: true }), 0);
+    return;
+  }
+
   const flash = h("section", { class: "flash" + (revealed ? " open" : ""), tabindex: 0, role: "button", "aria-label": revealed ? "Answer" : "Show answer", onclick: () => { if (!revealed) reveal(); } },
-    card.source === "dream" ? h("span", { class: "badge" }, icon("moon", 14), "Dream") : card.due === 0 ? h("span", { class: "badge" }, "New") : null,
-    h("p", { class: "prompt" + (reverse ? "" : " tr") }, front),
+    badge,
+    h("p", { class: "prompt tr" }, card.tr),
   );
   if (revealed) {
-    flash.append(h("div", { class: "divider" }), h("p", { class: "answer" + (reverse ? " tr" : "") }, back));
-    if (card.note) {
-      const note = h("p", { class: "muted small", hidden: true }, card.note);
-      flash.append(note);
-      flash.prepend(h("span", { class: "corner" }, iconBtn("info", "Note", (e) => { e.stopPropagation(); note.hidden = !note.hidden; }, "small")));
-    }
+    flash.append(h("div", { class: "divider" }), h("p", { class: "answer" }, card.en));
+    noteBtn(flash);
   } else flash.append(h("span", { class: "muted small" }, "Tap to flip"));
-  const sp = speakBtn(card.tr);
-  if (sp && (!reverse || revealed)) flash.append(sp);
   view.append(flash);
-
   if (revealed) {
     const g = (grade: Grade, label: string, cls: string) => h("button", { class: `btn grade ${cls}`, onclick: () => grade_(card, grade) }, label);
     view.append(h("div", { class: "grades" }, g(0, "Again", "again"), g(1, "Hard", "hard"), g(2, "Good", "good"), g(3, "Easy", "easy")));
@@ -419,8 +471,6 @@ function renderReview() {
 function reveal() {
   revealed = true;
   render();
-  const c = queue(S.cards)[0];
-  if (c && reverse) speak(c.tr);
 }
 
 function grade_(card: Card, grade: Grade) {
@@ -436,8 +486,84 @@ function grade_(card: Card, grade: Grade) {
   render();
 }
 
+// ---------- Drill ----------
+let drillKind: DrillKind = "mixed";
+let ex: Exercise | null = null;
+let exAnswer: { given: string; verdict: Verdict } | null = null;
+const round = { n: 0, right: 0, streak: 0 };
+const ROUND = 10;
+
+function renderDrill() {
+  view.append(
+    topBar("Drill",
+      round.streak >= 3 ? h("span", { class: "chip dream" }, `${round.streak} in a row`) : null,
+      iconBtn("book", "Suffix explorer", () => go("suffix")),
+    ),
+    h("div", { class: "filters" },
+      ...([["mixed", "Mixed"], ["cases", "Noun cases"], ["verbs", "Verb tenses"]] as [DrillKind, string][]).map(([k, l]) =>
+        h("button", { class: "filter" + (drillKind === k ? " on" : ""), onclick: () => { drillKind = k; ex = null; exAnswer = null; render(); } }, l)),
+    ),
+    h("div", { class: "bar" }, h("i", { style: `width:${(round.n / ROUND) * 100}%` })),
+  );
+
+  if (round.n >= ROUND) {
+    view.append(
+      h("section", { class: "flash" },
+        h("p", { class: "prompt" }, `${round.right} / ${ROUND}`),
+        h("p", { class: "muted" }, round.right >= 8 ? "Harika!" : round.right >= 5 ? "İyi!" : "Devam!"),
+        h("button", { class: "btn primary big", onclick: () => { round.n = 0; round.right = 0; ex = null; render(); } }, "Again"),
+      ),
+    );
+    return;
+  }
+
+  ex ??= nextExercise(drillKind, S.log.drill);
+  const e = ex;
+  const card = h("section", { class: "flash typed" },
+    h("span", { class: "badge" }, e.label),
+    h("p", { class: "prompt tr" }, e.base),
+    h("p", { class: "cue" }, e.cue),
+  );
+  view.append(card);
+
+  if (exAnswer) {
+    const v = VERDICT[exAnswer.verdict];
+    card.append(h("div", { class: `verdict ${v.cls}` }, icon(v.icon, 18), v.label), h("p", { class: "answer tr" }, e.answer));
+    if (exAnswer.verdict !== "right" && exAnswer.given) card.append(h("p", { class: "given" }, exAnswer.given));
+    if (e.steps.length) {
+      const steps = h("ol", { class: "steps", hidden: exAnswer.verdict === "right" }, ...e.steps.map((s) => h("li", {}, s.detail)));
+      card.append(steps);
+      card.prepend(h("span", { class: "corner" }, iconBtn("info", "Why", () => (steps.hidden = !steps.hidden), "small")));
+    }
+    const next = h("button", { class: "btn primary big grow", onclick: () => { ex = null; exAnswer = null; render(); } }, "Next");
+    view.append(h("div", { class: "row" }, next));
+    setTimeout(() => next.focus(), 0);
+    return;
+  }
+
+  const input = h("input", { type: "text", id: "drill-answer", class: "big-input", placeholder: "…", autocomplete: "off", autocapitalize: "off", spellcheck: false }) as HTMLInputElement;
+  const submit = () => {
+    if (!input.value.trim()) return;
+    const verdict = check(input.value, e.answer, { strictLetters: true });
+    exAnswer = { given: input.value.trim(), verdict };
+    const st = (S.log.drill[e.key] ??= { right: 0, wrong: 0 });
+    round.n += 1;
+    if (verdict === "right") { st.right++; round.right++; round.streak++; }
+    else {
+      st.wrong++;
+      round.streak = 0;
+      S.log.mistakes.push({ at: Date.now(), kind: "drill-miss", tr: e.base, better: e.answer, said: exAnswer.given, why: `${e.label}: ${e.cue}` });
+    }
+    saveLog();
+    render();
+  };
+  input.addEventListener("keydown", (k) => { if (k.key === "Enter") { k.preventDefault(); submit(); } });
+  view.append(input, trKeys(input), h("div", { class: "row" }, h("button", { class: "btn primary big grow", onclick: submit }, "Check")));
+  setTimeout(() => input.focus({ preventScroll: true }), 0);
+}
+
 document.addEventListener("keydown", (e) => {
-  if (tab !== "review") return;
+  if (tab !== "review" || typed) return;
   const t = e.target as HTMLElement;
   if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
   const card = queue(S.cards)[0];
@@ -525,13 +651,9 @@ async function takeTurn() {
     if (chat === c) {
       c.busy = false;
       render();
-      const last = c.turns[c.turns.length - 1];
-      if (last?.who === "them" && autoSpeak) speak(last.tr);
     }
   }
 }
-
-let autoSpeak = false;
 
 function renderChat(c: ChatState) {
   view.append(
@@ -541,7 +663,6 @@ function renderChat(c: ChatState) {
         h("h1", { class: "ellipsis" }, c.scenario.title),
       ),
       h("div", { class: "row", style: "gap:6px;flex-wrap:nowrap" },
-        canSpeak() ? iconBtn("speaker", autoSpeak ? "Auto-read on" : "Auto-read off", () => { autoSpeak = !autoSpeak; render(); }, autoSpeak ? "on" : "") : null,
         iconBtn("info", "Goal", () => { c.showGoal = !c.showGoal; render(); }, c.showGoal ? "on" : ""),
       ),
     ),
@@ -556,7 +677,7 @@ function renderChat(c: ChatState) {
       const en = h("p", { class: "en", hidden: true }, t.en ?? "");
       log.append(
         h("div", { class: "bubble them", onclick: () => (en.hidden = !en.hidden), title: "Tap for English" },
-          h("div", { class: "line" }, h("p", { class: "tr" }, t.tr), speakBtn(t.tr)),
+          h("div", { class: "line" }, h("p", { class: "tr" }, t.tr)),
           en,
         ),
       );
@@ -581,7 +702,7 @@ function renderChat(c: ChatState) {
         add.addEventListener("click", (e) => { e.stopPropagation(); if (addCard(cor.better, `Correction of: ${cor.said || t.tr}`, "roleplay", "Corrections", cor.why)) { add.replaceChildren(icon("check", 14)); add.setAttribute("disabled", ""); } });
         log.append(
           h("div", { class: "fix", onclick: () => (why.hidden = !why.hidden), title: "Tap for why" },
-            h("div", { class: "row", style: "gap:6px;flex-wrap:nowrap" }, icon("check", 16), h("span", { class: "tr grow" }, cor.better), speakBtn(cor.better), add),
+            h("div", { class: "row", style: "gap:6px;flex-wrap:nowrap" }, icon("check", 16), h("span", { class: "tr grow" }, cor.better), add),
             why,
           ),
         );
@@ -609,34 +730,11 @@ function renderChat(c: ChatState) {
   const composer = h("div", { class: "composer" },
     lastHint?.hint_tr && !c.busy ? iconBtn("bulb", "Idea", () => { c.showHint = !c.showHint; render(); }, c.showHint ? "on" : "") : null,
     input,
-    P.dictation ? micButton(input, c) : null,
     iconBtn("send", "Send", send, "solid"),
   );
-  view.append(composer);
+  view.append(h("div", { class: "composer-wrap" }, trKeys(input), composer));
   if (!c.busy) setTimeout(() => input.focus({ preventScroll: true }), 0);
   setTimeout(() => composer.scrollIntoView({ block: "end", behavior: "auto" }), 0);
-}
-
-function micButton(input: HTMLTextAreaElement, c: ChatState): HTMLElement {
-  const d = P.dictation;
-  let base = "";
-  let listening = false;
-  const offs: Array<() => void> = [];
-  const btn = iconBtn("mic", "Speak Turkish", () => {
-    if (listening) { d.stop().catch(() => {}); return; }
-    base = input.value ? input.value.trimEnd() + " " : "";
-    d.start({ language: "tr" }).catch((e: { code?: string }) => { if (e?.code === "not_granted") btn.remove(); });
-    offs.push(
-      d.onState(({ state }: { state: string }) => {
-        listening = state === "listening" || state === "starting";
-        btn.classList.toggle("live", listening);
-        if (state === "idle") offs.splice(0).forEach((f) => f());
-      }),
-      d.onPartial(({ text }: { text: string }) => { input.value = base + text; }),
-      d.onFinal(({ text }: { text: string }) => { base = base + text + " "; input.value = base; c.draft = input.value; }),
-    );
-  });
-  return btn;
 }
 
 // ---------- Words ----------
@@ -673,7 +771,6 @@ function renderPhrases() {
       h("div", { class: "list-row", onclick: () => note && (note.hidden = !note.hidden) },
         h("i", { class: `status ${dot}`, title: dot }),
         h("div", { class: "grow stack", style: "gap:0" }, h("span", { class: "tr" }, c.tr), h("span", { class: "muted small" }, c.en), note),
-        speakBtn(c.tr),
       ),
     );
   }
@@ -700,14 +797,13 @@ function renderSuffix() {
             steps,
           ),
           h("span", { class: "muted small" }, r.meaning),
-          speakBtn(r.form),
         ),
       );
     }
   };
   input.addEventListener("input", draw);
   view.append(
-    topBar("Grammar"),
+    topBar("Suffixes", iconBtn("close", "Back to drill", () => go("drill"))),
     input,
     h("div", { class: "filters" }, ...["ev", "kitap", "araba", "çocuk", "anne", "İstanbul"].map((w) =>
       h("button", { class: "filter", onclick: () => { input.value = w; draw(); } }, w))),

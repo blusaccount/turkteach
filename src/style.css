@@ -241,6 +241,8 @@ label.field { display: flex; flex-direction: column; gap: 6px; font-size: 0.85re
 .tile-btn span { font-size: 0.8rem; opacity: 0.8; }
 .tile-btn.talk { background: var(--accent); color: var(--accent-fg); }
 .tile-btn.dream { background: var(--night); color: var(--night-fg); }
+.tile-btn.drill { background: var(--teal); color: var(--bg); }
+.tile-btn.wide { grid-column: 1 / -1; min-height: 96px; }
 .dot { position: absolute; top: 16px; right: 16px; width: 10px; height: 10px; border-radius: 50%; background: var(--tulip); }
 
 /* Dream */
@@ -319,15 +321,16 @@ details summary { cursor: pointer; padding: 4px 0; }
 .mini { display: inline-flex; align-items: center; gap: 4px; border: 0; background: var(--accent-soft); color: var(--accent); font: 600 0.8rem var(--font-body); padding: 5px 10px; border-radius: 999px; cursor: pointer; }
 .mini:disabled { background: var(--teal-soft); color: var(--teal); cursor: default; }
 .fix .mini { padding: 0; width: 30px; height: 30px; justify-content: center; }
-.composer {
+.composer-wrap {
   position: sticky;
   bottom: calc(var(--tabbar) + env(safe-area-inset-bottom, 0px));
-  display: flex;
-  gap: 8px;
-  align-items: center;
   background: var(--bg);
-  padding-block: 10px;
+  padding-block: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
+.composer { display: flex; gap: 8px; align-items: center; }
 .composer textarea { flex: 1; border-radius: 999px; padding: 10px 16px; min-height: 44px; }
 
 /* Grammar */
@@ -348,3 +351,25 @@ details summary { cursor: pointer; padding: 4px 0; }
   @keyframes rise { from { transform: translateY(4px); } to { transform: none; } }
   @keyframes blink { 50% { opacity: 1; } }
 }
+
+/* Typed answers */
+.flash.typed { min-height: 200px; cursor: default; gap: 10px; }
+.cue { font-size: 1.05rem; color: var(--muted); }
+.verdict { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; padding: 4px 12px; border-radius: 999px; }
+.verdict.right { background: var(--teal-soft); color: var(--teal); }
+.verdict.almost { background: var(--accent-soft); color: var(--accent); }
+.verdict.wrong { background: var(--tulip-soft); color: var(--tulip); }
+.given { color: var(--muted); text-decoration: line-through; }
+.trkeys { display: flex; gap: 6px; flex-wrap: wrap; }
+.trkeys button {
+  flex: 1 1 0;
+  min-width: 36px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--fg);
+  font: 600 1.05rem var(--font-display);
+  padding: 8px 0;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.trkeys button:active { background: var(--accent-soft); }

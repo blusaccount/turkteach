@@ -4,6 +4,7 @@
 import type { Sample } from "./platform";
 import type { AppState, DreamProposal, Memory, MemoryChange, Scenario } from "./store";
 import { weakest } from "./srs";
+import { drillSummary } from "./drill";
 
 export interface Turn {
   who: "you" | "them";
@@ -113,7 +114,7 @@ export async function dream(sample: Sample, s: AppState, signal?: AbortSignal): 
 
   const prompt = `You are the dreaming step of a Turkish learning app. While the learner is away, you review their recent practice sessions together with their long-term learner memory, and propose how that memory and their study material should change. Like sleep consolidating memory: find what keeps happening across sessions, which no single session can see.
 
-The learner's goal: be conversational in everyday spoken Turkish with their Turkish girlfriend and her family (meals, small talk, visits, holidays, polite forms, family words). They started from Duolingo.
+The learner's goal: be able to talk and write with their Turkish girlfriend and her family (meals, small talk, visits, holidays, polite forms, family words). They practise in writing: typed flashcards, grammar drills (noun cases, verb tenses) and written role-play chats. They started from Duolingo.
 
 CURRENT LEARNER MEMORY (each entry has an id):
 ${JSON.stringify(s.profile.memories.map((m) => ({ id: m.id, kind: m.kind, text: m.text, seen: m.seen })))}
@@ -122,20 +123,21 @@ Current level: ${s.profile.level}
 ROLE-PLAY TRANSCRIPTS SINCE LAST DREAM:
 ${transcripts || "(none)"}
 
-CORRECTIONS AND MISSED FLASHCARDS SINCE LAST DREAM:
+CORRECTIONS, MISSED FLASHCARDS AND GRAMMAR DRILL MISSES SINCE LAST DREAM (drill misses: "tr" is the word, "better" the right form, "said" what they typed, "why" the target):
 ${JSON.stringify(mistakes)}
 
 WEAKEST FLASHCARDS: ${JSON.stringify(weak)}
+GRAMMAR DRILL ACCURACY (all time): ${JSON.stringify(drillSummary(s.log.drill ?? {}))}
 STATS: ${s.cards.length} cards, ${strong} solid, ${s.log.reviews} reviews in total.
 
 What to do:
-1. Memory changes. Look for recurring mistakes (a suffix and its vowel harmony, siz vs sen, word order, a word they keep missing), new strengths, contradictions between entries, and stale entries (a weak spot that no longer shows up, or is now handled correctly in the transcripts). Propose:
+1. Memory changes. Look for recurring mistakes (a case suffix or tense and its vowel harmony, spelling with Turkish letters, siz vs sen, word order, a word they keep missing), new strengths, contradictions between entries, and stale entries (a weak spot that no longer shows up, or is now handled correctly in the transcripts). Propose:
    - "add" for a new pattern, only if it appears at least twice or is clearly important;
    - "update" (give the id) to merge, sharpen or correct an entry;
    - "remove" (give the id) for stale or contradicted entries.
    kinds: "weak" (recurring problem), "strength", "focus" (at most one: what to work on next), "fact" (stable facts about the learner useful for conversations, e.g. their job or hobbies, only if the learner said them).
    Every change needs "why", "count" (how many times you saw the pattern) and 1 to 3 "evidence" items quoted from the transcripts or corrections. Don't invent evidence. Keep each memory text short and specific. Propose nothing if nothing changed.
-2. 5 to 8 new flashcards in natural spoken Turkish that drill the weak spots, each with a one-line "note" (the pattern it drills) and "why". Topic is one of: Greetings & politeness, At the table, Family, Small talk, Visits & holidays, Feelings & reactions, Grammar patterns. Don't repeat existing cards: ${JSON.stringify(existing)}
+2. 5 to 8 new flashcards in natural everyday Turkish that drill the weak spots (the learner types the Turkish from the English, so keep each one short and unambiguous), each with a one-line "note" (the pattern it drills) and "why". Topic is one of: Greetings & politeness, At the table, Family, Small talk, Visits & holidays, Feelings & reactions, Food & drink, Home, People, Time, Verbs, Describing, Grammar patterns. Don't repeat existing cards: ${JSON.stringify(existing)}
 3. 1 or 2 new role-play scenes with her family that would naturally make the learner practise the weak spots, with "why".
 4. "note": 2 to 3 encouraging sentences to the learner in English, with one Turkish phrase, on what you noticed.
 If there is very little data, keep memory changes minimal and base cards and scenes on sensible next steps for a beginner with this goal.

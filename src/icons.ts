@@ -17,6 +17,7 @@ const P: Record<string, string> = {
   check: '<path d="M5 12.5 10 17l9-10"/>',
   bulb: '<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/>',
   swap: '<path d="M7 7h12l-3-3M17 17H5l3 3"/>',
+  pen: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/>',
   // scenes
   dinner: '<path d="M3 11h18"/><path d="M5 11v9M19 11v9"/><path d="M9 7a3 3 0 0 1 6 0"/><path d="M12 4v1"/>',
