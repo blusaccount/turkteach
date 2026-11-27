@@ -4,6 +4,7 @@ import { cardId, newCard, queue, schedule, type Card, type Grade } from "./srs";
 import { inflectAll } from "./suffix";
 import { STARTER_SCENARIOS } from "./scenarios";
 import { applyChanges, dream, dreamMaterial, roleplayTurn, type RoleplayReply, type Turn } from "./ai";
+import { icon } from "./icons";
 import { errorText, loadPlatform, type Platform } from "./platform";
 import {
   emptyLog,
@@ -40,7 +41,7 @@ function h<K extends keyof HTMLElementTagNameMap>(
 let P: Platform;
 let store: Store;
 let S: AppState;
-type Tab = "home" | "review" | "talk" | "phrases" | "suffix";
+type Tab = "home" | "review" | "talk" | "phrases" | "suffix" | "dream" | "me";
 let tab: Tab = "home";
 const root = document.getElementById("app")!;
 let view: HTMLElement;
@@ -91,40 +92,28 @@ function browserSpeak(text: string) {
   }
 }
 const canSpeak = () => !!P.tts || "speechSynthesis" in window;
+const iconBtn = (name: string, label: string, onclick: (e: Event) => void, cls = "") =>
+  h("button", { class: `icon-btn ${cls}`, title: label, "aria-label": label, onclick }, icon(name, 18));
 const speakBtn = (text: string) =>
-  canSpeak()
-    ? h("button", { class: "icon-btn", title: "Listen", "aria-label": "Listen", onclick: (e: Event) => { e.stopPropagation(); speak(text); } }, "🔊")
-    : null;
+  canSpeak() ? iconBtn("speaker", "Listen", (e) => { e.stopPropagation(); speak(text); }) : null;
 
 // ---------- shell ----------
-const TABS: [Tab, string][] = [
-  ["home", "Today"],
-  ["review", "Review"],
-  ["talk", "Talk"],
-  ["phrases", "Phrases"],
-  ["suffix", "Suffixes"],
+const TABS: [Tab, string, string][] = [
+  ["home", "Home", "home"],
+  ["review", "Review", "cards"],
+  ["talk", "Talk", "chat"],
+  ["phrases", "Words", "book"],
+  ["suffix", "Grammar", "harmony"],
 ];
 
 function shell() {
-  const tabs = h("nav", { class: "tabs", role: "tablist" });
-  for (const [id, label] of TABS) {
-    tabs.append(
-      h("button", { role: "tab", "aria-selected": String(tab === id), onclick: () => go(id) }, label),
-    );
+  const nav = h("nav", { class: "tabbar", role: "tablist" });
+  for (const [id, label, ic] of TABS) {
+    const active = tab === id || (tab === "dream" && id === "home") || (tab === "me" && id === "home");
+    nav.append(h("button", { role: "tab", "aria-selected": String(active), onclick: () => go(id) }, icon(ic, 22), h("span", {}, label)));
   }
-  view = h("main", { class: "stack", style: "gap:16px" });
-  root.replaceChildren(
-    h(
-      "div",
-      { class: "app" },
-      h("header", { class: "top" },
-        h("div", { class: "brand" }, h("span", { class: "tile", "aria-hidden": "true" }), h("h1", {}, "Öğretmen")),
-        h("span", { class: "muted small" }, "Family Turkish, one conversation at a time"),
-      ),
-      tabs,
-      view,
-    ),
-  );
+  view = h("main", { class: "stack view" });
+  root.replaceChildren(h("div", { class: "app" }, view), nav);
 }
 
 function go(t: Tab) {
@@ -133,42 +122,70 @@ function go(t: Tab) {
   if (t !== "talk" && chat) endChat(false);
   shell();
   render();
+  window.scrollTo(0, 0);
 }
 
 function render() {
   view.replaceChildren();
-  ({ home: renderHome, review: renderReview, talk: renderTalk, phrases: renderPhrases, suffix: renderSuffix })[tab]();
+  ({ home: renderHome, review: renderReview, talk: renderTalk, phrases: renderPhrases, suffix: renderSuffix, dream: renderDream, me: renderMe })[tab]();
 }
 
-// ---------- Today ----------
+function topBar(title: string, ...right: Child[]) {
+  return h("header", { class: "topbar" }, h("h1", {}, title), h("div", { class: "row", style: "gap:6px" }, ...right));
+}
+
+// ---------- Home ----------
 let dreaming = false;
 let dreamError = "";
 
+function ring(done: number, total: number, center: Child, sub: string) {
+  const r = 52, c = 2 * Math.PI * r, frac = total ? done / total : 0;
+  const wrap = h("div", { class: "ring" });
+  wrap.innerHTML = `<svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="${r}" class="ring-bg"/><circle cx="60" cy="60" r="${r}" class="ring-fg" stroke-dasharray="${(c * frac).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 60 60)"/></svg>`;
+  wrap.append(h("div", { class: "ring-label" }, h("b", {}, center), h("span", {}, sub)));
+  return wrap;
+}
+
 function renderHome() {
-  const now = Date.now();
-  const q = queue(S.cards, now);
+  const q = queue(S.cards);
   const learned = S.cards.filter((c) => c.reps >= 2).length;
   const name = S.profile.learnerName;
+  const pending = S.profile.pending;
 
   view.append(
-    h("section", { class: "panel" },
-      h("h2", {}, name ? `Merhaba, ${name}!` : "Merhaba!"),
-      h("div", { class: "stats" },
-        h("div", { class: "stat" }, h("b", {}, String(q.length)), h("span", {}, "cards to review")),
-        h("div", { class: "stat" }, h("b", {}, String(learned)), h("span", {}, "phrases learned")),
-        h("div", { class: "stat" }, h("b", {}, String(S.log.sessions.length)), h("span", {}, "conversations")),
+    topBar(name ? `Merhaba, ${name}` : "Merhaba", iconBtn("user", "You", () => go("me"))),
+    h("section", { class: "hero" },
+      ring(learned, S.cards.length, String(q.length), "to review"),
+      h("div", { class: "stack", style: "gap:10px;align-items:flex-start" },
+        h("p", { class: "muted small" }, `${learned} of ${S.cards.length} learned`),
+        h("button", { class: "btn primary big", onclick: () => go("review"), disabled: !q.length }, q.length ? "Review" : "Done for now"),
       ),
-      h("div", { class: "row" },
-        h("button", { class: "btn primary", onclick: () => go("review"), disabled: q.length === 0 }, q.length ? "Start review" : "All caught up"),
-        h("button", { class: "btn", onclick: () => go("talk") }, "Practise a conversation"),
+    ),
+    h("div", { class: "tiles" },
+      h("button", { class: "tile-btn talk", onclick: () => go("talk") }, icon("chat", 28), h("b", {}, "Talk"), h("span", {}, "Role-play")),
+      h("button", { class: "tile-btn dream", onclick: () => go("dream") },
+        icon("moon", 28),
+        h("b", {}, dreaming ? "Dreaming…" : "Dream"),
+        h("span", {}, pending ? "Ready to review" : S.profile.memories.length ? `${S.profile.memories.length} memories` : "Learns from you"),
+        pending ? h("i", { class: "dot", "aria-label": "New" }) : null,
       ),
     ),
   );
 
-  view.append(dreamPanel());
+  const mem = S.profile.memories.filter((m) => m.kind === "focus" || m.kind === "weak").slice(0, 4);
+  if (mem.length) {
+    view.append(
+      h("div", { class: "stack", style: "gap:6px" },
+        h("span", { class: "eyebrow" }, "Working on"),
+        h("div", { class: "tags" }, ...mem.map((m) => h("span", { class: `chip ${KIND_CHIP[m.kind]}` }, m.text))),
+      ),
+    );
+  }
+}
 
-  // Settings: names make role-plays personal.
-  const learner = h("input", { type: "text", id: "learner-name", value: S.profile.learnerName, placeholder: "e.g. Lukas" });
+// ---------- You ----------
+function renderMe() {
+  const learner = h("input", { type: "text", id: "learner-name", value: S.profile.learnerName, placeholder: "Your name" });
   const partner = h("input", { type: "text", id: "partner-name", value: S.profile.partnerName, placeholder: "Her name" });
   const saveNames = () => {
     S.profile.learnerName = learner.value.trim().slice(0, 40);
@@ -177,155 +194,109 @@ function renderHome() {
   };
   learner.addEventListener("change", saveNames);
   partner.addEventListener("change", saveNames);
+  const auto = h("input", { type: "checkbox", id: "auto-dream", checked: S.profile.autoDream });
+  auto.addEventListener("change", () => { S.profile.autoDream = auto.checked; saveProfile(); });
   view.append(
-    h("details", { class: "panel" },
-      h("summary", { style: "cursor:pointer" }, h("b", {}, "Personalise")),
-      h("p", { class: "muted small" }, "Names are used in the role-plays so the family talks to you, about her."),
-      h("div", { class: "row" },
-        h("label", { class: "field" }, "Your name", learner),
-        h("label", { class: "field" }, "Your girlfriend's name", partner),
-      ),
-      h("p", { class: "muted small" }, store.remote
-        ? "Your progress is saved privately to your claude.ai account."
-        : "Running outside claude.ai: progress is saved in this browser only, and the Claude features are off."),
+    topBar("You", iconBtn("close", "Close", () => go("home"))),
+    h("section", { class: "panel" },
+      h("label", { class: "field" }, "Your name", learner),
+      h("label", { class: "field" }, "Her name", partner),
+      h("label", { class: "row switch" }, auto, "Dream by itself once a day"),
     ),
+    h("p", { class: "muted small center" }, store.remote ? "Saved privately to your Claude account." : "Saved in this browser only."),
   );
 }
 
-const KIND_LABEL: Record<Memory["kind"], string> = { weak: "Needs work", strength: "Strength", focus: "Focus", fact: "About you" };
+// ---------- Dream ----------
+const KIND_LABEL: Record<Memory["kind"], string> = { weak: "Practise", strength: "Strong", focus: "Focus", fact: "You" };
 const KIND_CHIP: Record<Memory["kind"], string> = { weak: "warn", strength: "blue", focus: "dream", fact: "" };
+let dreamInfo = false;
 
-function dreamPanel(): HTMLElement {
+function renderDream() {
   const p = S.profile;
   const last = p.dreams[p.dreams.length - 1];
-  const material = dreamMaterial(S);
-  const panel = h("section", { class: "panel dream-panel" });
-  panel.append(
-    h("div", { class: "row spread" },
-      h("div", { class: "stack", style: "gap:2px" },
-        h("span", { class: "eyebrow" }, "Dreaming"),
-        h("h2", {}, p.pending ? "Claude dreamt about your practice" : "What Claude remembers about you"),
-      ),
-      h("span", { class: "chip dream" }, last ? `Last dream ${ago(last.at)}` : "No dreams yet"),
+  view.append(topBar("Dream", iconBtn("info", "What is dreaming?", () => { dreamInfo = !dreamInfo; render(); }, dreamInfo ? "on" : "")));
+  if (dreamInfo) {
+    view.append(h("p", { class: "notice" },
+      "While you practise, the app keeps small notes. Dreaming reads across them, finds what keeps coming up, and suggests changes. Nothing changes until you apply it."));
+  }
+
+  if (p.pending) { view.append(proposalView(p.pending)); return; }
+
+  view.append(
+    h("section", { class: "dream-hero" },
+      h("div", { class: "moon" }, icon("moon", 40)),
+      last?.note ? h("p", {}, last.note) : h("p", { class: "muted" }, "No dreams yet."),
+      P.sample
+        ? h("button", { class: "btn primary big", disabled: dreaming, onclick: () => runDream() }, dreaming ? "Dreaming…" : "Dream now")
+        : h("span", { class: "chip" }, "Open on claude.ai to dream"),
+      last ? h("span", { class: "muted small" }, `Last dream ${ago(last.at)}`) : null,
+      dreamError ? h("p", { class: "error" }, dreamError) : null,
     ),
   );
 
-  if (p.pending) {
-    panel.append(proposalView(p.pending));
-    return panel;
-  }
-
   if (p.memories.length) {
-    if (last?.note) panel.append(h("p", {}, last.note));
     const order: Memory["kind"][] = ["focus", "weak", "strength", "fact"];
-    const list = h("div", { class: "stack" });
+    const list = h("div", { class: "panel list" });
     for (const m of [...p.memories].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind))) {
+      const ev = h("div", { class: "muted small", hidden: true }, ...m.evidence.map((e) => h("div", { class: "tr quote" }, e)));
       list.append(
-        h("div", { class: "row", style: "align-items:flex-start;flex-wrap:nowrap" },
-          h("span", { class: `chip ${KIND_CHIP[m.kind]}`, style: "flex:none" }, KIND_LABEL[m.kind]),
-          h("span", { class: "small", style: "min-width:0" }, m.text, m.seen > 1 ? h("span", { class: "muted" }, ` · seen ${m.seen}×`) : null),
+        h("button", { class: "list-row", onclick: () => (ev.hidden = !ev.hidden) },
+          h("span", { class: `chip ${KIND_CHIP[m.kind]}` }, KIND_LABEL[m.kind]),
+          h("span", { class: "grow" }, m.text, ev),
+          m.seen > 1 ? h("span", { class: "muted small" }, `${m.seen}×`) : null,
         ),
       );
     }
-    panel.append(list);
-  } else {
-    panel.append(
-      h("p", { class: "small" },
-        "While you practise, the app keeps small notes: your corrections, missed cards and conversations. Dreaming is a separate pass where Claude reads across all of those, spots what keeps coming up, and proposes updates to its memory of you, new flashcards and new scenes. Nothing changes until you approve it.",
-      ),
-    );
+    view.append(h("span", { class: "eyebrow" }, "What Claude remembers"), list);
   }
-  if (!P.sample) {
-    panel.append(h("p", { class: "notice" }, "Dreaming needs Claude. Open this app as an artifact on claude.ai to turn it on."));
-    return panel;
-  }
-  const btn = h("button", { class: "btn primary", disabled: dreaming, onclick: () => runDream() }, dreaming ? "Dreaming…" : "Dream now");
-  const auto = h("input", { type: "checkbox", id: "auto-dream", checked: p.autoDream });
-  auto.addEventListener("change", () => { p.autoDream = auto.checked; saveProfile(); });
-  panel.append(
-    h("div", { class: "row spread" },
-      btn,
-      h("label", { class: "row small muted", style: "gap:6px" }, auto, "Dream by itself once a day"),
-    ),
-  );
-  if (dreaming) panel.append(h("p", { class: "muted small" }, "Reading your recent sessions. This can take a minute."));
-  else if (material < 3 && last)
-    panel.append(h("p", { class: "muted small" }, "Not much new since the last dream. Review or talk a bit more first for a better one."));
-  if (dreamError) panel.append(h("p", { class: "error" }, dreamError));
-  if (p.history.length) panel.append(historyView());
-  return panel;
+  if (p.history.length) view.append(historyView());
 }
 
-/** The review step: every proposed change shows its evidence and can be kept or dropped. */
 function proposalView(d: DreamProposal): HTMLElement {
-  const keep = {
-    changes: d.changes.map(() => true),
-    cards: d.cards.map(() => true),
-    scenarios: d.scenarios.map(() => true),
-  };
-  const box = h("div", { class: "stack", style: "gap:12px" });
+  const keep = { changes: d.changes.map(() => true), cards: d.cards.map(() => true), scenarios: d.scenarios.map(() => true) };
+  const box = h("div", { class: "stack", style: "gap:14px" });
   box.append(
-    h("p", {}, d.note || d.summary),
-    h("p", { class: "muted small" },
-      `Read ${d.reviewed.sessions} conversation${d.reviewed.sessions === 1 ? "" : "s"}, ${d.reviewed.mistakes} corrections or misses, and your ${d.reviewed.cards} weakest cards. Untick anything that looks wrong, then apply.`),
+    h("section", { class: "dream-hero" }, h("div", { class: "moon" }, icon("sparkle", 36)), h("p", {}, d.note || d.summary)),
   );
-  const toggle = (arr: boolean[], i: number) => {
-    const cb = h("input", { type: "checkbox", checked: true, "aria-label": "Keep this change" });
+  const item = (arr: boolean[], i: number, main: Child, sub: Child, detail: Child[]) => {
+    const cb = h("input", { type: "checkbox", checked: true, "aria-label": "Keep" });
     cb.addEventListener("change", () => (arr[i] = cb.checked));
-    return cb;
+    const more = h("div", { class: "muted small stack", style: "gap:4px", hidden: true }, ...detail);
+    const row = h("div", { class: "list-row" }, cb,
+      h("div", { class: "grow stack", style: "gap:2px" }, main, sub, more),
+      detail.length ? iconBtn("info", "Why", () => (more.hidden = !more.hidden), "small") : null,
+    );
+    return row;
   };
   const opLabel = { add: "New", update: "Update", remove: "Forget" };
   if (d.changes.length) {
-    const list = h("div", { class: "stack" }, h("h3", {}, "Memory"));
+    const list = h("div", { class: "panel list" });
     d.changes.forEach((c, i) => {
       const old = c.id ? S.profile.memories.find((m) => m.id === c.id) : undefined;
-      list.append(
-        h("label", { class: "panel", style: "padding:10px 12px;gap:4px;flex-direction:row;align-items:flex-start" },
-          toggle(keep.changes, i),
-          h("div", { class: "stack", style: "gap:4px;min-width:0" },
-            h("div", { class: "row", style: "gap:6px" },
-              h("span", { class: `chip ${c.op === "remove" ? "warn" : "dream"}` }, opLabel[c.op]),
-              h("span", { class: `chip ${KIND_CHIP[c.kind]}` }, KIND_LABEL[c.kind]),
-              c.count > 1 ? h("span", { class: "muted small" }, `seen ${c.count}×`) : null,
-            ),
-            old && c.op === "update" ? h("span", { class: "muted small", style: "text-decoration:line-through" }, old.text) : null,
-            h("span", { class: "small" }, c.op === "remove" ? old?.text ?? c.text : c.text),
-            c.why ? h("span", { class: "muted small" }, c.why) : null,
-            ...c.evidence.map((e) => h("span", { class: "small tr", style: "border-left:2px solid var(--line);padding-left:8px" }, e)),
-          ),
-        ),
-      );
+      list.append(item(keep.changes, i,
+        h("span", { class: "row", style: "gap:6px" }, h("span", { class: `chip ${c.op === "remove" ? "warn" : "dream"}` }, opLabel[c.op]), h("span", { class: `chip ${KIND_CHIP[c.kind]}` }, KIND_LABEL[c.kind])),
+        h("span", {}, c.op === "remove" ? old?.text ?? c.text : c.text),
+        [c.why ? h("span", {}, c.why + (c.count > 1 ? ` (${c.count}×)` : "")) : "", ...c.evidence.map((e) => h("span", { class: "tr quote" }, e))],
+      ));
     });
-    box.append(list);
+    box.append(h("span", { class: "eyebrow" }, "Memory"), list);
   }
   if (d.cards.length) {
-    const list = h("div", { class: "stack" }, h("h3", {}, "New flashcards"));
-    d.cards.forEach((c, i) =>
-      list.append(
-        h("label", { class: "row", style: "align-items:flex-start;flex-wrap:nowrap" },
-          toggle(keep.cards, i),
-          h("div", { class: "stack", style: "gap:0;min-width:0" }, h("span", { class: "tr" }, c.tr), h("span", { class: "small" }, c.en), h("span", { class: "muted small" }, c.why || c.note)),
-        ),
-      ),
-    );
-    box.append(list);
+    const list = h("div", { class: "panel list" });
+    d.cards.forEach((c, i) => list.append(item(keep.cards, i, h("span", { class: "tr" }, c.tr), h("span", { class: "muted small" }, c.en), c.why || c.note ? [h("span", {}, c.why || c.note)] : [])));
+    box.append(h("span", { class: "eyebrow" }, "New cards"), list);
   }
   if (d.scenarios.length) {
-    const list = h("div", { class: "stack" }, h("h3", {}, "New scenes"));
-    d.scenarios.forEach((c, i) =>
-      list.append(
-        h("label", { class: "row", style: "align-items:flex-start;flex-wrap:nowrap" },
-          toggle(keep.scenarios, i),
-          h("div", { class: "stack", style: "gap:0;min-width:0" }, h("b", { class: "small" }, c.title), h("span", { class: "muted small" }, c.why || c.setting)),
-        ),
-      ),
-    );
-    box.append(list);
+    const list = h("div", { class: "panel list" });
+    d.scenarios.forEach((c, i) => list.append(item(keep.scenarios, i, h("b", {}, c.title), "", [h("span", {}, c.setting), c.why ? h("span", {}, c.why) : ""])));
+    box.append(h("span", { class: "eyebrow" }, "New scenes"), list);
   }
+  const none = { changes: d.changes.map(() => false), cards: d.cards.map(() => false), scenarios: d.scenarios.map(() => false) };
   box.append(
     h("div", { class: "row" },
-      h("button", { class: "btn primary", onclick: () => acceptDream(d, keep) }, "Apply selected"),
-      h("button", { class: "btn", onclick: () => acceptDream(d, { changes: d.changes.map(() => false), cards: d.cards.map(() => false), scenarios: d.scenarios.map(() => false) }) }, "Discard dream"),
+      h("button", { class: "btn primary big grow", onclick: () => acceptDream(d, keep) }, "Apply"),
+      h("button", { class: "btn big", onclick: () => acceptDream(d, none) }, "Discard"),
     ),
   );
   return box;
@@ -336,7 +307,7 @@ function acceptDream(d: DreamProposal, keep: { changes: boolean[]; cards: boolea
   const changes = d.changes.filter((_, i) => keep.changes[i]);
   let accepted = 0;
   if (changes.length) {
-    p.history.push({ at: Date.now(), reason: "Before dream of " + new Date(d.at).toLocaleDateString(), level: p.level, memories: p.memories });
+    p.history.push({ at: Date.now(), reason: "Before dream", level: p.level, memories: p.memories });
     p.memories = applyChanges(p.memories, changes);
     p.level = d.level || p.level;
     accepted += changes.length;
@@ -356,13 +327,13 @@ function acceptDream(d: DreamProposal, keep: { changes: boolean[]; cards: boolea
 
 function historyView(): HTMLElement {
   const p = S.profile;
-  const det = h("details", {}, h("summary", { class: "small muted", style: "cursor:pointer" }, `Memory history (${p.history.length} earlier versions)`));
+  const det = h("details", { class: "small muted" }, h("summary", {}, `Earlier versions (${p.history.length})`));
   for (const v of [...p.history].reverse()) {
     det.append(
-      h("div", { class: "row spread small", style: "padding-top:6px" },
-        h("span", {}, `${new Date(v.at).toLocaleString()} · ${v.memories.length} entries`),
+      h("div", { class: "row spread" },
+        h("span", {}, `${new Date(v.at).toLocaleDateString()} · ${v.memories.length} memories`),
         h("button", { class: "btn ghost", onclick: () => {
-          p.history.push({ at: Date.now(), reason: "Before rollback", level: p.level, memories: p.memories });
+          p.history.push({ at: Date.now(), reason: "Before restore", level: p.level, memories: p.memories });
           p.memories = v.memories;
           p.level = v.level;
           saveProfile();
@@ -378,7 +349,7 @@ async function runDream() {
   if (dreaming || !P.sample || S.profile.pending) return;
   dreaming = true;
   dreamError = "";
-  if (tab === "home") render();
+  if (tab === "dream" || tab === "home") render();
   try {
     const d = await dream(P.sample, S);
     S.profile.pending = d;
@@ -388,7 +359,7 @@ async function runDream() {
     dreamError = errorText(e);
   } finally {
     dreaming = false;
-    if (tab === "home") render();
+    if (tab === "dream" || tab === "home") render();
   }
 }
 
@@ -403,57 +374,45 @@ function ago(t: number): string {
 // ---------- Review ----------
 let revealed = false;
 let reverse = false;
-let session = { done: 0 };
+const session = { done: 0 };
 
 function renderReview() {
   const q = queue(S.cards);
-  const dir = h("label", { class: "row small muted", style: "gap:6px" },
-    h("input", { type: "checkbox", id: "reverse", checked: reverse, onchange: (e: Event) => { reverse = (e.target as HTMLInputElement).checked; revealed = false; render(); } }),
-    "English → Turkish",
+  view.append(
+    topBar("Review",
+      h("span", { class: "count" }, String(q.length)),
+      iconBtn("swap", reverse ? "Showing English first" : "Showing Turkish first", () => { reverse = !reverse; revealed = false; render(); }, reverse ? "on" : ""),
+    ),
   );
-  view.append(h("div", { class: "row spread" }, h("span", { class: "muted small" }, `${q.length} left · ${session.done} done this session`), dir));
+  const total = q.length + session.done;
+  view.append(h("div", { class: "bar" }, h("i", { style: `width:${total ? (session.done / total) * 100 : 100}%` })));
 
   if (!q.length) {
-    view.append(
-      h("section", { class: "panel flash" },
-        h("p", { class: "prompt" }, "Aferin! 🎉"),
-        h("p", { class: "muted" }, "Well done. Nothing left to review right now."),
-        h("button", { class: "btn primary", onclick: () => go("talk") }, "Practise a conversation"),
-      ),
-    );
+    view.append(h("section", { class: "flash" }, icon("check", 44), h("p", { class: "prompt" }, "Aferin!"), h("button", { class: "btn primary big", onclick: () => go("talk") }, "Talk")));
     return;
   }
   const card = q[0];
   const front = reverse ? card.en : card.tr;
   const back = reverse ? card.tr : card.en;
-  const panel = h("section", { class: "panel flash" },
-    h("div", { class: "row" },
-      h("span", { class: "chip" + (card.source === "dream" ? " dream" : "") }, card.source === "dream" ? "From a dream" : card.topic),
-      card.due === 0 ? h("span", { class: "chip blue" }, "New") : null,
-    ),
-    h("div", { class: "row", style: "justify-content:center" }, h("p", { class: "prompt" + (reverse ? "" : " tr") }, front), !reverse ? speakBtn(card.tr) : null),
+  const flash = h("section", { class: "flash" + (revealed ? " open" : ""), tabindex: 0, role: "button", "aria-label": revealed ? "Answer" : "Show answer", onclick: () => { if (!revealed) reveal(); } },
+    card.source === "dream" ? h("span", { class: "badge" }, icon("moon", 14), "Dream") : card.due === 0 ? h("span", { class: "badge" }, "New") : null,
+    h("p", { class: "prompt" + (reverse ? "" : " tr") }, front),
   );
   if (revealed) {
-    panel.append(
-      h("div", { class: "row", style: "justify-content:center" }, h("p", { class: "answer" + (reverse ? " tr" : "") }, back), reverse ? speakBtn(card.tr) : null),
-      card.note ? h("p", { class: "muted small" }, card.note) : "",
-    );
-  } else {
-    panel.append(h("button", { class: "btn primary", onclick: reveal }, "Show answer"), h("span", { class: "muted small" }, "Say it out loud first. Space to reveal."));
-  }
-  view.append(panel);
+    flash.append(h("div", { class: "divider" }), h("p", { class: "answer" + (reverse ? " tr" : "") }, back));
+    if (card.note) {
+      const note = h("p", { class: "muted small", hidden: true }, card.note);
+      flash.append(note);
+      flash.prepend(h("span", { class: "corner" }, iconBtn("info", "Note", (e) => { e.stopPropagation(); note.hidden = !note.hidden; }, "small")));
+    }
+  } else flash.append(h("span", { class: "muted small" }, "Tap to flip"));
+  const sp = speakBtn(card.tr);
+  if (sp && (!reverse || revealed)) flash.append(sp);
+  view.append(flash);
 
   if (revealed) {
-    const g = (grade: Grade, label: string, sub: string, cls = "") =>
-      h("button", { class: `btn ${cls}`, onclick: () => grade_(card, grade) }, label, h("small", {}, sub));
-    view.append(
-      h("div", { class: "grades" },
-        g(0, "Again", "1", "again"),
-        g(1, "Hard", "2"),
-        g(2, "Good", "3"),
-        g(3, "Easy", "4"),
-      ),
-    );
+    const g = (grade: Grade, label: string, cls: string) => h("button", { class: `btn grade ${cls}`, onclick: () => grade_(card, grade) }, label);
+    view.append(h("div", { class: "grades" }, g(0, "Again", "again"), g(1, "Hard", "hard"), g(2, "Good", "good"), g(3, "Easy", "easy")));
   }
 }
 
@@ -491,45 +450,40 @@ document.addEventListener("keydown", (e) => {
 interface ChatState {
   scenario: Scenario;
   turns: Turn[];
-  extras: Map<number, RoleplayReply>; // reply metadata keyed by turn index
+  extras: Map<number, RoleplayReply>;
   busy: boolean;
   error: string;
   abort?: AbortController;
   draft: string;
+  showHint: boolean;
+  showGoal: boolean;
 }
 let chat: ChatState | null = null;
+
+const SCENE_ICON: Record<string, string> = { "first-dinner": "dinner", "tea-with-dad": "tea", "kitchen-help": "pot", "bayram-visit": "gift", "video-call": "phone", cousins: "people" };
 
 function allScenarios(): Scenario[] {
   return [...S.profile.scenarios.slice().reverse(), ...STARTER_SCENARIOS];
 }
 
 function renderTalk() {
-  if (!P.sample) {
-    view.append(h("p", { class: "notice" }, "Conversation practice runs on Claude. Open this app as an artifact on claude.ai and it uses your own Claude plan, with no API key."));
+  if (chat) { renderChat(chat); return; }
+  view.append(topBar("Talk"));
+  if (!P.sample) view.append(h("p", { class: "notice" }, "Open on claude.ai to talk."));
+  const grid = h("div", { class: "scenes" });
+  for (const s of allScenarios()) {
+    grid.append(
+      h("button", { class: "scene" + (s.source === "dream" ? " from-dream" : ""), disabled: !P.sample, onclick: () => startChat(s) },
+        h("span", { class: "scene-icon" }, icon(s.source === "dream" ? "sparkle" : SCENE_ICON[s.id] ?? "chat", 26)),
+        h("b", {}, s.title),
+      ),
+    );
   }
-  if (!chat) {
-    view.append(h("div", { class: "stack", style: "gap:4px" },
-      h("h2", {}, "Pick a scene"),
-      h("p", { class: "muted small" }, "Claude plays a member of her family. Write in Turkish (English is fine when you're stuck) and you'll get gentle corrections."),
-    ));
-    const grid = h("div", { class: "scenarios" });
-    for (const s of allScenarios()) {
-      grid.append(
-        h("button", { class: "panel scenario", disabled: !P.sample, onclick: () => startChat(s) },
-          h("div", { class: "row spread" }, h("h3", {}, s.title), s.source === "dream" ? h("span", { class: "chip dream" }, "From a dream") : null),
-          h("p", { class: "muted small" }, s.setting),
-          h("p", { class: "small" }, h("b", {}, "Goal: "), s.goal),
-        ),
-      );
-    }
-    view.append(grid);
-    return;
-  }
-  renderChat(chat);
+  view.append(grid);
 }
 
 function startChat(s: Scenario) {
-  chat = { scenario: s, turns: [], extras: new Map(), busy: false, error: "", draft: "" };
+  chat = { scenario: s, turns: [], extras: new Map(), busy: false, error: "", draft: "", showHint: false, showGoal: false };
   render();
   takeTurn();
 }
@@ -552,12 +506,12 @@ async function takeTurn() {
   const c = chat;
   c.busy = true;
   c.error = "";
+  c.showHint = false;
   c.abort = new AbortController();
   render();
   try {
     const r = await roleplayTurn(P.sample, S, c.scenario, c.turns, c.abort.signal);
     if (chat !== c) return;
-    // Attach the correction to the learner's last line.
     const lastYou = c.turns.length - 1;
     if (r.correction && lastYou >= 0 && c.turns[lastYou].who === "you") {
       S.log.mistakes.push({ at: Date.now(), kind: "correction", said: r.correction.said || c.turns[lastYou].tr, better: r.correction.better, why: r.correction.why });
@@ -580,64 +534,68 @@ async function takeTurn() {
 let autoSpeak = false;
 
 function renderChat(c: ChatState) {
-  const auto = h("input", { type: "checkbox", id: "auto-speak", checked: autoSpeak, onchange: (e: Event) => { autoSpeak = (e.target as HTMLInputElement).checked; } });
   view.append(
-    h("div", { class: "row spread" },
-      h("div", { class: "stack", style: "gap:2px;min-width:0;flex:1" }, h("h2", {}, c.scenario.title), h("p", { class: "muted small" }, c.scenario.goal)),
-      h("button", { class: "btn", onclick: () => endChat() }, "End conversation"),
+    h("header", { class: "topbar" },
+      h("div", { class: "row", style: "gap:4px;min-width:0;flex-wrap:nowrap" },
+        iconBtn("back", "End conversation", () => endChat(), "plain"),
+        h("h1", { class: "ellipsis" }, c.scenario.title),
+      ),
+      h("div", { class: "row", style: "gap:6px;flex-wrap:nowrap" },
+        canSpeak() ? iconBtn("speaker", autoSpeak ? "Auto-read on" : "Auto-read off", () => { autoSpeak = !autoSpeak; render(); }, autoSpeak ? "on" : "") : null,
+        iconBtn("info", "Goal", () => { c.showGoal = !c.showGoal; render(); }, c.showGoal ? "on" : ""),
+      ),
     ),
-    canSpeak() ? h("label", { class: "row small muted", style: "gap:6px" }, auto, "Read replies aloud") : "",
   );
+  if (c.showGoal) view.append(h("p", { class: "notice" }, c.scenario.goal));
 
   const log = h("div", { class: "chat", "aria-live": "polite" });
+  let lastHint: RoleplayReply | undefined;
   c.turns.forEach((t, i) => {
     if (t.who === "them") {
       const ex = c.extras.get(i);
       const en = h("p", { class: "en", hidden: true }, t.en ?? "");
       log.append(
-        h("div", { class: "bubble them" },
+        h("div", { class: "bubble them", onclick: () => (en.hidden = !en.hidden), title: "Tap for English" },
           h("div", { class: "line" }, h("p", { class: "tr" }, t.tr), speakBtn(t.tr)),
           en,
-          h("button", { class: "btn ghost small", style: "align-self:flex-start;padding:0", onclick: (e: Event) => { en.hidden = !en.hidden; (e.target as HTMLElement).textContent = en.hidden ? "Show English" : "Hide English"; } }, "Show English"),
         ),
       );
-      if (ex && ex.phrases.length) {
+      if (ex?.phrases.length) {
         const row = h("div", { class: "phrase-add" });
         for (const ph of ex.phrases) {
           const exists = S.cards.some((x) => x.id === cardId(ph.tr));
-          const b = h("button", { class: "chip blue", style: "border:0;cursor:pointer", disabled: exists, title: ph.en }, exists ? `✓ ${ph.tr}` : `+ ${ph.tr}`);
-          b.addEventListener("click", () => { if (addCard(ph.tr, ph.en, "roleplay")) { b.textContent = `✓ ${ph.tr}`; b.setAttribute("disabled", ""); } });
+          const b = h("button", { class: "mini", disabled: exists, title: ph.en }, icon(exists ? "check" : "plus", 14), ph.tr);
+          b.addEventListener("click", () => { if (addCard(ph.tr, ph.en, "roleplay")) { b.replaceChildren(icon("check", 14), ph.tr); b.setAttribute("disabled", ""); } });
           row.append(b);
         }
         log.append(row);
       }
-      if (ex && i === c.turns.length - 1 && ex.hint_tr && !c.busy) {
-        log.append(h("p", { class: "hint" }, "Idea: ", h("span", { class: "tr" }, ex.hint_tr), ` (${ex.hint_en})`));
-      }
+      if (i === c.turns.length - 1) lastHint = ex;
     } else {
       log.append(h("div", { class: "bubble you" }, h("p", {}, t.tr)));
-      const next = c.extras.get(i + 1);
-      if (next?.correction) {
-        const cor = next.correction;
-        const fix = h("div", { class: "fix" },
-          h("span", { class: "eyebrow" }, "Better"),
-          h("div", { class: "row", style: "gap:6px" }, h("span", { class: "better tr" }, cor.better), speakBtn(cor.better)),
-          cor.why ? h("span", { class: "muted" }, cor.why) : null,
-        );
+      const cor = c.extras.get(i + 1)?.correction;
+      if (cor) {
+        const why = h("span", { class: "muted small", hidden: true }, cor.why);
         const exists = S.cards.some((x) => x.id === cardId(cor.better));
-        const add = h("button", { class: "btn ghost small", style: "align-self:flex-start;padding:0", disabled: exists }, exists ? "In your deck" : "+ Add to review");
-        add.addEventListener("click", () => { if (addCard(cor.better, `Correction of: ${cor.said || t.tr}`, "roleplay", "Corrections", cor.why)) { add.textContent = "Added"; add.setAttribute("disabled", ""); } });
-        fix.append(add);
-        log.append(fix);
+        const add = h("button", { class: "mini", disabled: exists, title: "Add to review" }, icon(exists ? "check" : "plus", 14));
+        add.addEventListener("click", (e) => { e.stopPropagation(); if (addCard(cor.better, `Correction of: ${cor.said || t.tr}`, "roleplay", "Corrections", cor.why)) { add.replaceChildren(icon("check", 14)); add.setAttribute("disabled", ""); } });
+        log.append(
+          h("div", { class: "fix", onclick: () => (why.hidden = !why.hidden), title: "Tap for why" },
+            h("div", { class: "row", style: "gap:6px;flex-wrap:nowrap" }, icon("check", 16), h("span", { class: "tr grow" }, cor.better), speakBtn(cor.better), add),
+            why,
+          ),
+        );
       }
     }
   });
-  if (c.busy) log.append(h("p", { class: "hint" }, "…"));
-  if (c.error) log.append(h("div", { class: "row" }, h("p", { class: "error" }, c.error), h("button", { class: "btn", onclick: takeTurn }, "Try again")));
+  if (c.busy) log.append(h("div", { class: "bubble them typing" }, h("i"), h("i"), h("i")));
+  if (c.error) log.append(h("div", { class: "row" }, h("p", { class: "error" }, c.error), h("button", { class: "btn", onclick: takeTurn }, "Retry")));
+  if (c.showHint && lastHint?.hint_tr) {
+    log.append(h("div", { class: "hint" }, h("span", { class: "tr" }, lastHint.hint_tr), h("span", { class: "muted small" }, lastHint.hint_en)));
+  }
   view.append(log);
 
-  // Composer
-  const input = h("textarea", { id: "chat-input", rows: 2, placeholder: "Türkçe yaz… (Write in Turkish)", disabled: c.busy }) as HTMLTextAreaElement;
+  const input = h("textarea", { id: "chat-input", rows: 1, placeholder: "Türkçe…", disabled: c.busy }) as HTMLTextAreaElement;
   input.value = c.draft;
   input.addEventListener("input", () => (c.draft = input.value));
   const send = () => {
@@ -647,12 +605,13 @@ function renderChat(c: ChatState) {
     c.draft = "";
     takeTurn();
   };
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
-  });
-  const composer = h("div", { class: "composer" }, input);
-  if (P.dictation) composer.append(micButton(input, c));
-  composer.append(h("button", { class: "btn primary", disabled: c.busy, onclick: send }, "Send"));
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
+  const composer = h("div", { class: "composer" },
+    lastHint?.hint_tr && !c.busy ? iconBtn("bulb", "Idea", () => { c.showHint = !c.showHint; render(); }, c.showHint ? "on" : "") : null,
+    input,
+    P.dictation ? micButton(input, c) : null,
+    iconBtn("send", "Send", send, "solid"),
+  );
   view.append(composer);
   if (!c.busy) setTimeout(() => input.focus({ preventScroll: true }), 0);
   setTimeout(() => composer.scrollIntoView({ block: "end", behavior: "auto" }), 0);
@@ -660,16 +619,13 @@ function renderChat(c: ChatState) {
 
 function micButton(input: HTMLTextAreaElement, c: ChatState): HTMLElement {
   const d = P.dictation;
-  const btn = h("button", { class: "icon-btn", title: "Speak Turkish", "aria-label": "Speak Turkish" }, "🎙");
   let base = "";
   let listening = false;
   const offs: Array<() => void> = [];
-  btn.addEventListener("click", () => {
+  const btn = iconBtn("mic", "Speak Turkish", () => {
     if (listening) { d.stop().catch(() => {}); return; }
     base = input.value ? input.value.trimEnd() + " " : "";
-    d.start({ language: "tr" }).catch((e: { code?: string }) => {
-      if (e?.code === "not_granted") btn.remove();
-    });
+    d.start({ language: "tr" }).catch((e: { code?: string }) => { if (e?.code === "not_granted") btn.remove(); });
     offs.push(
       d.onState(({ state }: { state: string }) => {
         listening = state === "listening" || state === "starting";
@@ -683,98 +639,86 @@ function micButton(input: HTMLTextAreaElement, c: ChatState): HTMLElement {
   return btn;
 }
 
-// ---------- Phrases ----------
+// ---------- Words ----------
 let topicFilter = "All";
+let adding = false;
 function renderPhrases() {
-  const topics = ["All", ...TOPICS, ...new Set(S.cards.map((c) => c.topic).filter((t) => !(TOPICS as string[]).includes(t)))];
-  const sel = h("select", { id: "topic", "aria-label": "Topic" }, ...topics.map((t) => h("option", { value: t, selected: t === topicFilter }, t)));
-  sel.addEventListener("change", () => { topicFilter = sel.value; render(); });
+  view.append(topBar("Words", h("span", { class: "count" }, String(S.cards.length)), iconBtn(adding ? "close" : "plus", adding ? "Close" : "Add a phrase", () => { adding = !adding; render(); }, adding ? "on" : "")));
 
-  const en = h("input", { type: "text", id: "new-en", placeholder: "English" });
-  const tr = h("input", { type: "text", id: "new-tr", placeholder: "Türkçe" });
-  const msg = h("span", { class: "muted small" });
-  const add = () => {
-    if (!tr.value.trim() || !en.value.trim()) { msg.textContent = "Fill in both sides."; return; }
-    msg.textContent = addCard(tr.value.trim(), en.value.trim(), "roleplay", "My own") ? "Added to your review deck." : "That one's already in your deck.";
-    tr.value = en.value = "";
-    setTimeout(render, 900);
-  };
+  if (adding) {
+    const tr = h("input", { type: "text", id: "new-tr", placeholder: "Türkçe" });
+    const en = h("input", { type: "text", id: "new-en", placeholder: "English" });
+    const add = () => {
+      if (!tr.value.trim() || !en.value.trim()) return;
+      addCard(tr.value.trim(), en.value.trim(), "roleplay", "My own");
+      adding = false;
+      render();
+    };
+    view.append(h("section", { class: "panel" }, tr, en, h("button", { class: "btn primary", onclick: add }, "Add")));
+  }
 
+  const extra = [...new Set(S.cards.map((c) => c.topic).filter((t) => !(TOPICS as string[]).includes(t)))];
+  const short: Record<string, string> = { "Greetings & politeness": "Polite", "At the table": "Table", "Family": "Family", "Small talk": "Small talk", "Visits & holidays": "Visits", "Feelings & reactions": "Reactions" };
   view.append(
-    h("details", { class: "panel" },
-      h("summary", { style: "cursor:pointer" }, h("b", {}, "Add your own phrase")),
-      h("p", { class: "muted small" }, "Heard something at dinner? Add it here and it joins your reviews."),
-      h("div", { class: "row" }, tr, en),
-      h("div", { class: "row" }, h("button", { class: "btn primary", onclick: add }, "Add"), msg),
+    h("div", { class: "filters" },
+      ...["All", ...TOPICS, ...extra].map((t) =>
+        h("button", { class: "filter" + (t === topicFilter ? " on" : ""), onclick: () => { topicFilter = t; render(); } }, short[t] ?? t)),
     ),
-    h("div", { class: "row spread" }, h("span", { class: "muted small" }, `${S.cards.length} phrases in your deck`), h("div", { style: "max-width:260px;flex:1" }, sel)),
   );
-  const list = h("div", { class: "panel phrase-list" });
-  const cards = S.cards.filter((c) => topicFilter === "All" || c.topic === topicFilter);
-  for (const c of cards) {
-    const state = c.due === 0 ? "New" : c.reps >= 2 ? "Learned" : "Learning";
+  const list = h("div", { class: "panel list" });
+  for (const c of S.cards.filter((c) => topicFilter === "All" || c.topic === topicFilter)) {
+    const note = c.note ? h("span", { class: "muted small", hidden: true }, c.note) : null;
+    const dot = c.source === "dream" ? "dream" : c.reps >= 2 ? "done" : c.due === 0 ? "new" : "learning";
     list.append(
-      h("div", { class: "phrase" },
+      h("div", { class: "list-row", onclick: () => note && (note.hidden = !note.hidden) },
+        h("i", { class: `status ${dot}`, title: dot }),
+        h("div", { class: "grow stack", style: "gap:0" }, h("span", { class: "tr" }, c.tr), h("span", { class: "muted small" }, c.en), note),
         speakBtn(c.tr),
-        h("div", { class: "body" },
-          h("span", { class: "tr" }, c.tr),
-          h("span", { class: "small" }, c.en),
-          c.note ? h("span", { class: "muted small" }, c.note) : null,
-        ),
-        h("span", { class: "chip" + (c.source === "dream" ? " dream" : state === "Learned" ? " blue" : "") }, c.source === "dream" ? "Dream" : state),
       ),
     );
   }
   view.append(list);
 }
 
-// ---------- Suffixes ----------
+// ---------- Grammar ----------
 let suffixWord = "ev";
 function renderSuffix() {
-  const input = h("input", { type: "text", id: "suffix-word", value: suffixWord, placeholder: "Type a Turkish noun, e.g. kitap", autocomplete: "off", spellcheck: false });
-  const out = h("div", { class: "forms" });
+  const input = h("input", { type: "text", id: "suffix-word", class: "big-input", value: suffixWord, placeholder: "kitap", autocomplete: "off", spellcheck: false });
+  const out = h("div", { class: "panel list" });
   const draw = () => {
     suffixWord = input.value;
     const results = inflectAll(input.value);
     out.replaceChildren();
-    if (!input.value.trim()) return;
-    if (!results.length) {
-      out.append(h("p", { class: "muted" }, "Type a single Turkish word with at least one vowel."));
-      return;
-    }
+    out.hidden = !results.length;
     for (const r of results) {
       const stemLen = r.form.length - r.suffix.length - (r.form.includes(" ") ? 1 : 0);
-      const stem = r.form.slice(0, stemLen);
-      const tail = r.form.slice(stemLen);
+      const steps = h("ol", { class: "steps", hidden: true }, ...r.steps.map((s) => h("li", {}, s.detail)));
       out.append(
-        h("details", { class: "form-row" },
-          h("summary", {},
-            h("span", { class: "row", style: "gap:8px" }, h("span", { class: "word" }, stem, h("em", {}, tail)), speakBtn(r.form)),
-            h("span", { class: "muted small", style: "text-align:right" }, r.meaning),
+        h("div", { class: "list-row form", onclick: () => (steps.hidden = !steps.hidden) },
+          h("div", { class: "grow stack", style: "gap:2px" },
+            h("span", { class: "word" }, r.form.slice(0, stemLen), h("em", {}, r.form.slice(stemLen))),
+            steps,
           ),
-          h("ol", {}, ...r.steps.map((s) => h("li", {}, h("b", {}, s.label + ": "), s.detail))),
+          h("span", { class: "muted small" }, r.meaning),
+          speakBtn(r.form),
         ),
       );
     }
   };
   input.addEventListener("input", draw);
   view.append(
-    h("section", { class: "panel" },
-      h("h2", {}, "Vowel harmony helper"),
-      h("p", { class: "muted small" }, "Turkish suffixes change their vowel to match the word. Type a noun to see its common forms; open a row to see why."),
-      h("div", { class: "row" }, ...["ev", "kitap", "araba", "çocuk", "anne", "İstanbul"].map((w) =>
-        h("button", { class: "chip blue", style: "border:0;cursor:pointer", onclick: () => { input.value = w; draw(); } }, w))),
-      input,
-    ),
+    topBar("Grammar"),
+    input,
+    h("div", { class: "filters" }, ...["ev", "kitap", "araba", "çocuk", "anne", "İstanbul"].map((w) =>
+      h("button", { class: "filter", onclick: () => { input.value = w; draw(); } }, w))),
     out,
-    h("p", { class: "muted small" }, "Regular rules only. Loanwords (saat → saati) and a few short words (dört → dördü) break them."),
   );
   draw();
 }
 
 // ---------- boot ----------
 async function boot() {
-  root.replaceChildren(h("div", { class: "app" }, h("p", { class: "muted" }, "Yükleniyor… (loading)")));
+  root.replaceChildren(h("div", { class: "app" }, h("p", { class: "muted center" }, "Yükleniyor…")));
   P = await loadPlatform();
   store = await openStore(P);
   let loaded: Awaited<ReturnType<Store["load"]>> = {};
@@ -796,9 +740,9 @@ async function boot() {
   shell();
   render();
 
-  // Self-learning: dream on open once a day when there's something new to learn from.
+  // Dream on open once a day when there's something new. It only proposes; you still approve.
   const due = Date.now() - S.profile.lastDream > 20 * 3_600_000;
-  if (P.sample && S.profile.autoDream && due && dreamMaterial(S) >= 3) runDream();
+  if (P.sample && S.profile.autoDream && !S.profile.pending && due && dreamMaterial(S) >= 3) runDream();
 }
 
 boot();
