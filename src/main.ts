@@ -433,22 +433,14 @@ function renderReview() {
       return;
     }
     view.append(flash);
-    const input = h("input", { type: "text", id: "review-answer", class: "big-input", placeholder: "Türkçe…", autocomplete: "off", autocapitalize: "off", spellcheck: false }) as HTMLInputElement;
+    const input = h("input", { type: "text", id: "review-answer", class: "big-input", placeholder: "Türkçe…", autocomplete: "off", autocapitalize: "off", autocorrect: "off", spellcheck: false, enterkeyhint: "done" }) as HTMLInputElement;
     input.value = draftAnswer;
     input.addEventListener("input", () => (draftAnswer = input.value));
-    const submit = () => {
-      answer = { given: input.value.trim(), verdict: check(input.value, card.tr) };
-      render();
-    };
-    input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
-    view.append(
-      input,
-      trKeys(input),
-      h("div", { class: "row" },
-        h("button", { class: "btn big grow", onclick: () => { answer = { given: "", verdict: "wrong" }; render(); } }, "Show"),
-        h("button", { class: "btn primary big grow", onclick: submit }, "Check"),
-      ),
-    );
+    const msg = h("p", { class: "hint-msg", hidden: true }, "Type your answer first, or tap Show");
+    view.append(answerForm(input, msg,
+      () => { answer = { given: input.value.trim(), verdict: check(input.value, card.tr) }; render(); },
+      () => { answer = { given: "", verdict: "wrong" }; render(); },
+    ));
     setTimeout(() => input.focus({ preventScroll: true }), 0);
     return;
   }
@@ -506,7 +498,8 @@ function renderDrill() {
     h("div", { class: "bar" }, h("i", { style: `width:${(round.n / ROUND) * 100}%` })),
   );
 
-  if (round.n >= ROUND) {
+  // The score shows once the last answer's feedback has been seen.
+  if (round.n >= ROUND && !exAnswer) {
     view.append(
       h("section", { class: "flash" },
         h("p", { class: "prompt" }, `${round.right} / ${ROUND}`),
@@ -535,31 +528,65 @@ function renderDrill() {
       card.append(steps);
       card.prepend(h("span", { class: "corner" }, iconBtn("info", "Why", () => (steps.hidden = !steps.hidden), "small")));
     }
-    const next = h("button", { class: "btn primary big grow", onclick: () => { ex = null; exAnswer = null; render(); } }, "Next");
+    const next = h("button", { class: "btn primary big grow", onclick: () => { ex = null; exAnswer = null; render(); } }, round.n >= ROUND ? "See score" : "Next");
     view.append(h("div", { class: "row" }, next));
     setTimeout(() => next.focus(), 0);
     return;
   }
 
-  const input = h("input", { type: "text", id: "drill-answer", class: "big-input", placeholder: "…", autocomplete: "off", autocapitalize: "off", spellcheck: false }) as HTMLInputElement;
-  const submit = () => {
-    if (!input.value.trim()) return;
-    const verdict = check(input.value, e.answer, { strictLetters: true });
-    exAnswer = { given: input.value.trim(), verdict };
+  const input = h("input", { type: "text", id: "drill-answer", class: "big-input", placeholder: "…", autocomplete: "off", autocapitalize: "off", autocorrect: "off", spellcheck: false, enterkeyhint: "done" }) as HTMLInputElement;
+  const msg = h("p", { class: "hint-msg", hidden: true }, "Type your answer first");
+  let done = false;
+  const grade = (given: string) => {
+    if (done) return;
+    done = true;
+    const verdict: Verdict = given ? check(given, e.answer, { strictLetters: true }) : "wrong";
+    exAnswer = { given, verdict };
     const st = (S.log.drill[e.key] ??= { right: 0, wrong: 0 });
     round.n += 1;
     if (verdict === "right") { st.right++; round.right++; round.streak++; }
     else {
       st.wrong++;
       round.streak = 0;
-      S.log.mistakes.push({ at: Date.now(), kind: "drill-miss", tr: e.base, better: e.answer, said: exAnswer.given, why: `${e.label}: ${e.cue}` });
+      S.log.mistakes.push({ at: Date.now(), kind: "drill-miss", tr: e.base, better: e.answer, said: given || "(skipped)", why: `${e.label}: ${e.cue}` });
     }
     saveLog();
     render();
   };
-  input.addEventListener("keydown", (k) => { if (k.key === "Enter") { k.preventDefault(); submit(); } });
-  view.append(input, trKeys(input), h("div", { class: "row" }, h("button", { class: "btn primary big grow", onclick: submit }, "Check")));
+  const form = answerForm(input, msg, () => grade(input.value.trim()), () => grade(""));
+  view.append(form);
   setTimeout(() => input.focus({ preventScroll: true }), 0);
+}
+
+/**
+ * Answer field + letter row + buttons as one form, so Enter, the phone's "Done" key and the
+ * Check button all submit the same way. An empty answer shows a nudge instead of doing nothing.
+ */
+function answerForm(input: HTMLInputElement, msg: HTMLElement, onCheck: () => void, onShow: () => void): HTMLFormElement {
+  const form = h("form", { class: "stack answer-form", novalidate: true }) as HTMLFormElement;
+  form.addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    if (!input.value.trim()) {
+      msg.hidden = false;
+      input.classList.remove("shake");
+      void input.offsetWidth; // restart the animation
+      input.classList.add("shake");
+      input.focus();
+      return;
+    }
+    onCheck();
+  });
+  input.addEventListener("input", () => { msg.hidden = true; });
+  form.append(
+    input,
+    msg,
+    trKeys(input),
+    h("div", { class: "row" },
+      h("button", { type: "button", class: "btn big grow", onclick: onShow }, "Show"),
+      h("button", { type: "submit", class: "btn primary big grow" }, "Check"),
+    ),
+  );
+  return form;
 }
 
 document.addEventListener("keydown", (e) => {

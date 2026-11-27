@@ -125,7 +125,7 @@ p { margin: 0; }
 .tabbar button[aria-selected="true"] { color: var(--accent); background: var(--accent-soft); }
 
 /* Controls */
-button { font-family: var(--font-body); }
+button { font-family: var(--font-body); -webkit-tap-highlight-color: transparent; }
 .btn {
   border: 1px solid var(--line);
   background: var(--surface);
@@ -373,3 +373,8 @@ details summary { cursor: pointer; padding: 4px 0; }
   cursor: pointer;
 }
 .trkeys button:active { background: var(--accent-soft); }
+.hint-msg { color: var(--tulip); font-size: 0.85rem; text-align: center; }
+@media (prefers-reduced-motion: no-preference) {
+  .shake { animation: shake 0.3s; }
+  @keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+}
